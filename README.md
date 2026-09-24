@@ -6,7 +6,7 @@ Gitwire 监控你关注的 GitHub 开源项目，用 AI 持续为你产出情报
 
 ## 情报产出
 
-本仓库是 Gitwire **软件本体**；情报档案发布在独立仓库 [czm233/gitwire-intel](https://github.com/czm233/gitwire-intel)——每个被监控项目一个文件夹，内含技术栈、架构图、业务逻辑、changelog、哨兵记录与同步游标（`meta.yml`）。
+本仓库是 Gitwire **软件本体**；情报档案发布在独立仓库 [czm233/gitwire-vault](https://github.com/czm233/gitwire-vault)——每个被监控项目一个文件夹，内含技术栈、架构图、业务逻辑、changelog、哨兵记录与同步游标（`meta.yml`）。
 
 ## 它解决什么问题
 
