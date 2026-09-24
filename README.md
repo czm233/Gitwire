@@ -4,6 +4,10 @@
 
 Gitwire 监控你关注的 GitHub 开源项目，用 AI 持续为你产出情报：定时扫描仓库的 main 分支，一旦有新提交，就按可自定义的「配方」（recipe）交给 agent 分析，自动维护架构图、时序图、业务流程文档与逐版本 changelog，并把结果版本化地发布到专属的情报仓库——可以推回 GitHub、可以留在本地 Obsidian、也可以通过 Bark 推送警报。
 
+## 情报产出
+
+本仓库是 Gitwire **软件本体**；情报档案发布在独立仓库 [czm233/gitwire-intel](https://github.com/czm233/gitwire-intel)——每个被监控项目一个文件夹，内含技术栈、架构图、业务逻辑、changelog、哨兵记录与同步游标（`meta.yml`）。
+
 ## 它解决什么问题
 
 - 每次想了解一个开源项目，都得临时问 AI，又慢又没有积累
