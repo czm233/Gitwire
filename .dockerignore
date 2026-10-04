@@ -1,0 +1,20 @@
+# Explicit allowlist: never send local credentials, databases or source clones.
+**
+!Dockerfile
+!.dockerignore
+!pyproject.toml
+!uv.lock
+!alembic.ini
+!app/
+!app/**
+!migrations/
+!migrations/**
+!frontend/
+!frontend/**
+**/__pycache__/
+**/*.pyc
+frontend/node_modules/
+frontend/dist/
+**/.env
+**/.env.*
+**/*.log

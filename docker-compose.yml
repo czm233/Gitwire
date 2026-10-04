@@ -1,0 +1,72 @@
+name: gitwire-deploy
+
+x-application: &application
+  image: gitwire:hosted
+  build: .
+  env_file: ${GITWIRE_ENV_FILE:-.env.production}
+  environment:
+    HOSTED_ENABLED: "true"
+    DATA_DIR: /app/data
+    DATABASE_URL: postgresql+psycopg://gitwire:${GITWIRE_DB_PASSWORD:?Set a generated hexadecimal database password}@postgres:5432/gitwire
+    REDIS_URL: redis://redis:6379/0
+    GITWIRE_VAULT: ""
+    BARK_URL: ""
+  init: true
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: gitwire
+      POSTGRES_USER: gitwire
+      POSTGRES_PASSWORD: ${GITWIRE_DB_PASSWORD:?Set in .env.production}
+    volumes: ["postgres-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gitwire -d gitwire"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+  migrate:
+    <<: *application
+    command: ["/app/.venv/bin/alembic", "upgrade", "head"]
+    restart: "no"
+    depends_on:
+      postgres: {condition: service_healthy}
+  api:
+    <<: *application
+    ports: ["127.0.0.1:10240:8000"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "/app/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+  worker:
+    <<: *application
+    command: ["/app/.venv/bin/gitwire", "worker"]
+    volumes: ["public-corpus:/app/data"]
+    stop_grace_period: 31m
+    depends_on:
+      api: {condition: service_healthy}
+  scheduler:
+    <<: *application
+    command: ["/app/.venv/bin/gitwire", "scheduler"]
+    depends_on:
+      worker: {condition: service_started}
+
+volumes:
+  postgres-data:
+  public-corpus:

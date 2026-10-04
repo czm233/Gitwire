@@ -1,0 +1,34 @@
+name: gitwire
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: gitwire
+      POSTGRES_USER: gitwire
+      POSTGRES_PASSWORD: ${GITWIRE_DB_PASSWORD:?Set in .env.infra}
+    ports: ["127.0.0.1:10243:5432"]
+    volumes: ["postgres-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gitwire -d gitwire"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    ports: ["127.0.0.1:10244:6379"]
+    volumes: ["redis-data:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports: ["127.0.0.1:10245:1025", "127.0.0.1:10246:8025"]
+    restart: unless-stopped
+volumes:
+  postgres-data:
+  redis-data:
