@@ -27,6 +27,13 @@ test.setup('前置:注入会话登录测试账户 pilot', { sessions: ['pilot'] 
   await session.save('pilot');
 });
 
+test('页面标题精确为「Issue 雷达」,不显示数量', { tags: ['smoke'], session: 'pilot' }, async ({ app, browser }) => {
+  // 以 pilot 登录态打开雷达页(有 5 条数据,标题也不许带数量)
+  await app.open('/issues');
+  // 断言:页面大标题精确等于「Issue 雷达」——不许出现"Issue 雷达(5)"之类的计数
+  await expect(browser.locator('h1.page-title')).toHaveText('Issue 雷达');
+});
+
 test('统计条:六张卡,「全部」最左且默认激活', { tags: ['smoke'],  session: 'pilot' }, async ({ app, browser }) => {
   // 以 pilot 登录态打开雷达页
   await app.open('/issues');
