@@ -197,7 +197,7 @@ def seed() -> None:
             ('job-digest', 'digest', 'pending', 2, {}, ''),
         ]
         for job_id, kind, status, attempts, result, error in jobs:
-            s.add(Job(id=job_id, kind=kind, payload={'repo': 'pilot/alpha'}, user_id='pilot',
+            s.add(Job(id=job_id, kind=kind, payload={'repo_id': 'repo-1'}, user_id='pilot',
                       status=status, attempts=attempts, result=result, error=error,
                       created_at=at - 7200, available_at=at))
             s.add(JobAccess(job_id=job_id, user_id='pilot'))
@@ -246,6 +246,12 @@ def seed() -> None:
                     title='writer 的警报', body='gamma 出现机会', url='https://github.com/x/event-writer'))
         s.commit()
         s.add(Notification(id='notice-writer', user_id='writer', event_id='event-writer'))
+        s.commit()
+        # ── 第三账户 quitter:专供"退出登录"测试(登出会删服务端会话,
+        #    用独立账户避免并行打掉 pilot/writer 的登录态)──
+        s.add(Account(id='quitter', github_id='9003', login='quitter'))
+        s.add(BrowserSession(digest=digest('e2e-quitter-session'), user_id='quitter',
+                             csrf='e2e-quitter-csrf', expires_at=at + SESSION_DAYS * 86400))
         s.commit()
     engine.dispose()
     print(f'seeded {DB.name}: {len(SEED["repos"])} repos / {len(SEED["issues"])} issues / account pilot')
