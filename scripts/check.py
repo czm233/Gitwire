@@ -7,6 +7,7 @@
     uv run python scripts/check.py frontend   # 前端单元测试(node:test)
     uv run python scripts/check.py build      # tsc 类型检查 + vite 构建
     uv run python scripts/check.py e2e        # 浏览器端到端(隔离栈:sqlite+种子数据,自动起停)
+    uv run python scripts/check.py smoke      # 提交前快速门禁:pytest + e2e 冒烟子集(--tag smoke)
 
 验收环境生命周期(启动/状态/停止共享设施)由 scripts/acceptance.py 管理;
 e2e 隔离栈由 scripts/e2e_stack.py 管理,二者互不影响。
@@ -42,16 +43,23 @@ def e2e() -> bool:
     return step('browser e2e (isolated stack)', ['uv', 'run', 'python', 'scripts/e2e_stack.py', 'run'])
 
 
-STEPS = {'backend': backend, 'frontend': frontend, 'build': build, 'e2e': e2e}
+def e2e_smoke() -> bool:
+    return step('browser e2e smoke subset', ['uv', 'run', 'python', 'scripts/e2e_stack.py', 'run', '--', '--tag', 'smoke'])
+
+
+STEPS = {'backend': backend, 'frontend': frontend, 'build': build, 'e2e': e2e, 'smoke': e2e_smoke}
 
 
 def main() -> None:
     action = sys.argv[1] if len(sys.argv) > 1 else 'all'
-    if action not in {*STEPS, 'all'}:
+    if action not in {*STEPS, 'all', 'smoke'}:
         raise SystemExit(__doc__)
-    results: dict[str, bool] = {}
-    for name in (['backend', 'frontend', 'build', 'e2e'] if action == 'all' else [action]):
-        results[name] = STEPS[name]()
+    if action == 'smoke':
+        results = {'backend': backend(), 'smoke': e2e_smoke()}
+    else:
+        results: dict[str, bool] = {}
+        for name in (['backend', 'frontend', 'build', 'e2e'] if action == 'all' else [action]):
+            results[name] = STEPS[name]()
     print('\n=== check 结果 ===')
     for name, ok in results.items():
         print(f'{"✓" if ok else "×"} {name}')

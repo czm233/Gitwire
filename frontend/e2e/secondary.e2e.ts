@@ -7,7 +7,7 @@ import { test, expect } from 'e2e';
  * 设置页访客看到登录说明。对应 AGENTS.md:请求失败提供重试、不显示成"暂无数据"。
  */
 
-test('投递记录:状态与失败原因分列,失败可重试', { session: 'pilot' }, async ({ app, screen, browser }) => {
+test('投递记录:状态与失败原因分列,失败可重试', { tags: ['smoke'],  session: 'pilot' }, async ({ app, screen, browser }) => {
   // 以 pilot 登录态打开邮件投递记录页
   await app.open('/deliveries');
   // 找到表格所有数据行

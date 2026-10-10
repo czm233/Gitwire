@@ -24,7 +24,7 @@ test.setup('前置:注入会话登录测试账户 writer', { sessions: ['writer'
   await session.save('writer');
 });
 
-test('暂停监控后状态翻转,恢复后回到监控中', { session: 'writer' }, async ({ app, screen, browser }) => {
+test('暂停监控后状态翻转,恢复后回到监控中', { tags: ['smoke'],  session: 'writer' }, async ({ app, screen, browser }) => {
   // 以 writer 登录态打开监控清单页
   await app.open('/repos');
   // 找到 pilot/gamma 那一行(writer 专属仓库)

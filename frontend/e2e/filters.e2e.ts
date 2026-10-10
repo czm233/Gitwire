@@ -22,8 +22,8 @@ test('运行历史:按任务类型筛选只留该类任务', { session: 'pilot' 
   await expect(rows.first()).toContainText('失败');
   // 筛选后出现"清除筛选"按钮,点击恢复
   await screen.getByRole('button', { name: '清除筛选' }).click();
-  // 断言:恢复后至少能看到三类种子任务(行数是动态的,只断言包含更新仓库动态)
-  await expect(rows.filter({ hasText: '更新仓库动态' })).toHaveCount(1);
+  // 断言:恢复后种子的 scan 结果行仍在(行数是动态的,explore/重试会并发追加同类)
+  await expect(rows.filter({ hasText: '本次处理 5 项' }).first()).toBeVisible();
 });
 
 test('运行历史:按状态筛选只留失败任务', { session: 'pilot' }, async ({ app, screen, browser }) => {

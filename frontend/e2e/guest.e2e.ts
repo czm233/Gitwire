@@ -6,14 +6,14 @@ import { test, expect } from 'e2e';
  * 未登录访问个人页面说明登录后用途并提供公开浏览入口;右上角仅显示登录图标。
  */
 
-test('访客:根路径重定向到公开 Issue 雷达', async ({ app, browser }) => {
+test('访客:根路径重定向到公开 Issue 雷达', { tags: ['smoke'] }, async ({ app, browser }) => {
   // 打开网站根路径 /
   await app.open('/');
   // 断言:浏览器地址最终停在 /issues(根路径必须重定向到雷达)
   await expect(browser).toHaveURL(/\/issues/);
 });
 
-test('访客:雷达显示公开浏览引导,不渲染个人雷达', async ({ app, screen, browser }) => {
+test('访客:雷达显示公开浏览引导,不渲染个人雷达', { tags: ['smoke'] }, async ({ app, screen, browser }) => {
   // 打开 Issue 雷达页
   await app.open('/issues');
   // 断言:页面上出现"查看公开项目的 Issue"这个大标题(访客引导卡)

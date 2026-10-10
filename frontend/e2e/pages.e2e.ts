@@ -34,7 +34,7 @@ test('运行历史:任务类型与结果分列,状态与尝试次数如实呈现
   await expect(digest.first()).toContainText('等待中');
 });
 
-test('警报:已读与未读状态区分,未读提供标为已读', { session: 'pilot' }, async ({ app, screen, browser }) => {
+test('警报:已读与未读状态区分,未读提供标为已读', { tags: ['smoke'],  session: 'pilot' }, async ({ app, screen, browser }) => {
   // 以 pilot 登录态打开警报页
   await app.open('/alerts');
   // 找到表格所有数据行

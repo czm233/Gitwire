@@ -8,7 +8,7 @@ import { test, expect } from 'e2e';
  * 分页用 ListPager(上一页/下一页按位置出现)。
  */
 
-test('我的 Star 默认视图:最新 Star 在最前,已监控行显示已监控', { session: 'pilot' }, async ({ app, browser }) => {
+test('我的 Star 默认视图:最新 Star 在最前,已监控行显示已监控', { tags: ['smoke'],  session: 'pilot' }, async ({ app, browser }) => {
   // 以 pilot 登录态打开候选仓库页(默认来源=我的 Star)
   await app.open('/candidates');
   // 找到表格所有数据行

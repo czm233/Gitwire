@@ -6,7 +6,7 @@ import { test, expect } from 'e2e';
  * 页码数字当前页高亮 · 上一页/下一页按位置出现 · 不用首页/末页按钮。
  */
 
-test('分页条显示总数,第一页只有下一页', { session: 'pilot' }, async ({ app, screen, browser }) => {
+test('分页条显示总数,第一页只有下一页', { tags: ['smoke'],  session: 'pilot' }, async ({ app, screen, browser }) => {
   // 以 pilot 登录态打开候选仓库页(29 条 Star,每页 25 → 2 页)
   await app.open('/candidates');
   // 断言:分页条上显示"29 条"总数

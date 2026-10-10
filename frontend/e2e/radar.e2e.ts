@@ -27,7 +27,7 @@ test.setup('前置:注入会话登录测试账户 pilot', { sessions: ['pilot'] 
   await session.save('pilot');
 });
 
-test('统计条:六张卡,「全部」最左且默认激活', { session: 'pilot' }, async ({ app, browser }) => {
+test('统计条:六张卡,「全部」最左且默认激活', { tags: ['smoke'],  session: 'pilot' }, async ({ app, browser }) => {
   // 以 pilot 登录态打开雷达页
   await app.open('/issues');
   // 找到所有统计卡元素
@@ -58,7 +58,7 @@ test('统计数字与种子数据一致(全部5·可上手2·已关闭1·未入�
   }
 });
 
-test('默认分组「全部」:五条全列出,最新在前,过期翻译不显示', { session: 'pilot' }, async ({ app, browser }) => {
+test('默认分组「全部」:五条全列出,最新在前,过期翻译不显示', { tags: ['smoke'],  session: 'pilot' }, async ({ app, browser }) => {
   // 以 pilot 登录态打开雷达页(默认分组就是"全部")
   await app.open('/issues');
   // 找到雷达表格的所有数据行
