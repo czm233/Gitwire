@@ -25,3 +25,4 @@ credentials.*
 
 # e2e 运行产物(报告/缓存,不入库;CI 里作为 artifact 上传)
 frontend/.e2e/
+.coverage
