@@ -18,6 +18,12 @@ export default defineConfig({
       "/api": "http://127.0.0.1:10240",
     },
   },
+  preview: {
+    // e2e 隔离栈用 preview 伺服构建版；默认代理到本机后端，e2e_stack.py 会覆盖目标端口
+    proxy: {
+      "/api": process.env.E2E_API_TARGET || "http://127.0.0.1:10240",
+    },
+  },
   build: {
     outDir: "dist",
     chunkSizeWarningLimit: 1200,
