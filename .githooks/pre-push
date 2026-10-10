@@ -1,0 +1,21 @@
+#!/bin/sh
+# 推送门禁:push 前跑快速检查(pytest + e2e 冒烟子集,约 30s),红灯拦推。
+# CI 仍会跑全量;这里拦的是"明知红灯还推"。
+# 紧急绕过:SKIP_PUSH_GATE=1 git push(请在提交信息里说明原因)。
+if [ "$SKIP_PUSH_GATE" = "1" ]; then
+  echo "pre-push 门禁被 SKIP_PUSH_GATE 跳过。"
+  exit 0
+fi
+# 读取并丢弃 stdin 的 ref 信息,保持管道干净
+cat >/dev/null
+echo "pre-push:运行快速门禁(pytest + e2e 冒烟,约 30s)…"
+cd "$(git rev-parse --show-toplevel)" || exit 1
+if uv run python scripts/check.py smoke; then
+  echo "pre-push:门禁通过。"
+  exit 0
+fi
+cat <<EOF
+✋ pre-push 门禁未通过,推送被拦下。
+修复后再推;确认要带红灯推(如先推调试分支):SKIP_PUSH_GATE=1 git push
+EOF
+exit 1
