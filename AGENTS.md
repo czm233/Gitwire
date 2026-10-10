@@ -43,6 +43,17 @@
 - `/api/repos` 返回顺序为最新在前（配置顺序反转）；issues/runs/alerts 均支持 `page`/`page_size` 参数（上限 200）。
 - 修改 `app/` 下代码后：跑 `uv run pytest tests/ -q`，全部通过后重启 `gitwire serve`（先确认没有 running 状态的分析任务）。
 
+## 测试与回归（2026-10-09 工程化试点确立，详见 docs/engineering.md）
+
+- **统一检查入口**：`uv run python scripts/check.py`（= pytest + 前端单测 + 构建 + 浏览器 e2e）。改 `app/` 或 `frontend/src` 后跑对应层，提交前跑全量；CI（`.github/workflows/ci.yml`）与本机同一套命令。
+- **浏览器 e2e**：tester-army/e2e，跑在隔离栈（`scripts/e2e_stack.py`，端口 10248/10249，sqlite + 种子数据），不碰 10240/10241 验收环境与真实数据。断言目前全部为确定性 `expect`，零模型依赖；接入 `agent.act` 需在 `frontend/e2e.config.ts` 配支持工具调用+图像的模型。
+- **种子契约**：`scripts/e2e_stack.py` 的 `SEED` 与 `frontend/e2e/*.e2e.ts` 断言互为契约，两边必须同步改。
+- **测试变更边界**（AI 铁律）：不得为变绿删用例/跳过检查/放宽断言/改预期结果。红灯先分类——实现缺陷修实现；已批准的需求变更才允许同步改断言，且要在提交说明里写清差异；定位器等操作细节可修但业务断言含义不变；含义不明确先问用户。自动修复重试上限 3 次，偶然通过不算修复。
+- **答案卡门禁**（2026-10-10）：`frontend/e2e/**`、`tests/**`、`scripts/e2e_stack.py` 受 pre-commit 保护（`.githooks/`，`git config core.hooksPath .githooks` 已启用），改动必须先由用户签发令牌：`uv run python scripts/answer_card.py approve "原因"`；AI 永远不得自行签发令牌或用 `--no-verify` 绕过。
+- **测试源码逐行注释**（2026-10-10 用户要求）：`frontend/e2e/**` 每条语句上方必须配一行简体中文注释，说明该行"做了什么"（打开什么页面/点了什么/断言什么），让非编程背景的读者点开驾驶舱「源码」即可逐行看懂；新增或修改测试时同步维护注释。
+- **修过的 bug 先转回归断言再关闭**（pytest 或 e2e，往“答案卡”上加一条）。动态行数不做精确断言（如运行历史含自动排入的翻译任务），按语义过滤断言。
+- **新行为随交付补断言**（2026-10-10 用户确立，不再需要用户逐次要求）：新增页面、新增/变更用户可见行为或业务规则时，交付前必须同步补上对应断言（e2e 逐行注释），并跑绿 `scripts/check.py` 全量门禁；纯重构/样式调整不强制新增断言，但必须全量回归通过。新增断言属于答案卡变更，提交时按门禁流程请用户批准。
+
 ## 端口
 
-- 10240 后端（gitwire serve）· 10241 Vite dev · 10242 构建版静态服务。详见 `~/.config/local-deploy/ports.yaml` 的 gitwire 条目。
+- 10240 后端（gitwire serve）· 10241 Vite dev · 10242 构建版静态服务（全镜像验收栈）· 10248 e2e 隔离 api · 10249 e2e 隔离 web。详见 `~/.config/local-deploy/ports.yaml` 的 gitwire 条目。
