@@ -1,0 +1,29 @@
+#!/bin/sh
+# 答案卡门禁:受保护的测试断言改动必须持有人类签发的批准令牌。
+# 令牌:uv run python scripts/answer_card.py approve "改动原因"
+# 自己清楚要改且不想走流程时,可 git commit --no-verify 跳过(请慎用)。
+staged=$(git diff --cached --name-only)
+protected=""
+for f in $staged; do
+  case "$f" in
+    frontend/e2e/*|tests/*|scripts/e2e_stack.py) protected="$protected $f" ;;
+  esac
+done
+[ -z "$protected" ] && exit 0
+
+token=data/answer-card-approval.json
+if [ -f "$token" ] && uv run python scripts/answer_card.py status >/dev/null 2>&1; then
+  echo "答案卡变更已获批准,放行:$protected"
+  exit 0
+fi
+
+cat <<EOF
+✋ 答案卡保护:以下文件是回归测试的断言/种子契约,不许未经批准修改:
+$protected
+
+这是你本人要改吗?如果是,先签发一次性批准令牌:
+    uv run python scripts/answer_card.py approve "改动原因(会记录)"
+之后 15 分钟内可提交。确认不该改,请还原:
+    git restore --staged $protected
+EOF
+exit 1
