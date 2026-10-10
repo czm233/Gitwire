@@ -23,8 +23,8 @@ def run(*args, capture=False):
 
 
 def prepare():
-    registry=yaml.safe_load(Path('/Users/czm/.config/local-deploy/ports.yaml').read_text())
-    assert registry['projects']['gitwire']['ports']['container-acceptance']['port']==PORT
+    registry=yaml.safe_load((Path.home()/'.config'/'local-deploy'/'ports.yaml').read_text())
+    assert registry['projects']['gitwire']['ports']['frontend_static']==PORT
     owned=run('docker','ps','--filter',f'label=com.docker.compose.project={PROJECT}',
               '--filter',f'publish={PORT}','--format','{{.Names}}',capture=True).stdout.strip()
     listeners=subprocess.run(['lsof',f'-tiTCP:{PORT}','-sTCP:LISTEN'],text=True,capture_output=True).stdout.strip()
