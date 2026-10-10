@@ -115,6 +115,13 @@ git commit ...   # 钩子放行;建议提交信息附「答案卡变更:...」
   仓库只提交 `*.example`;e2e 栈的 `ENCRYPTION_KEY` 首次生成后落盘复用,密钥不进代码。
 - e2e 与 CI 均不依赖 Postgres/Redis/Docker(后端 REDIS_URL 为空走降级路径,有 pytest 覆盖)。
 
+## 覆盖率
+
+`GITWIRE_COV=1 uv run python scripts/check.py backend` 输出语句覆盖率并设防倒退线
+(2026-10-11 基线:总覆盖 80%,5740 语句;`--cov-fail-under=79`)。默认不启用,
+避免日常门禁被覆盖率噪声干扰;发版前或大改后建议跑一次。低覆盖模块(如 osv.py)
+是补 pytest 的优先方向。
+
 ## CI(GitHub Actions)
 
 `.github/workflows/ci.yml`:GitHub 托管 ubuntu runner,uv.lock + package-lock 锁定依赖,
