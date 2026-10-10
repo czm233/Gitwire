@@ -15,9 +15,11 @@ e2e 隔离栈由 scripts/e2e_stack.py 管理,二者互不影响。
 """
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -69,6 +71,19 @@ def main() -> None:
     print('\n=== check 结果 ===')
     for name, ok in results.items():
         print(f'{"✓" if ok else "×"} {name}')
+    # 机器可读档案:分层结果+耗时+提交号,供 CI 归档与后续工具消费
+    report = {
+        'at': time.strftime('%Y-%m-%dT%H:%M:%S'),
+        'head': subprocess.run(['git', 'rev-parse', '--short', 'HEAD'], cwd=ROOT,
+                               capture_output=True, text=True).stdout.strip(),
+        'results': results,
+        'ok': all(results.values()),
+    }
+    try:
+        (ROOT / 'data').mkdir(exist_ok=True)
+        (ROOT / 'data' / 'check-report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2))
+    except OSError:
+        pass  # 档案写失败不影响门禁结论
     sys.exit(0 if all(results.values()) else 1)
 
 
