@@ -39,10 +39,15 @@
 
 | 命令 | 作用 |
 |---|---|
-| `uv run python scripts/check.py` | 完整门禁 = backend + frontend + build + e2e,提交前必跑 |
+| `uv run python scripts/check.py` | 完整门禁 = backend + frontend + build + e2e,提交前必跑(结果落 data/check-report.json) |
 | `uv run python scripts/check.py backend` | pytest(改 `app/` 后) |
 | `uv run python scripts/check.py e2e` | 浏览器回归(改 `frontend/src` 后),含隔离栈自动起停 |
 | `uv run python scripts/e2e_stack.py up / status / down / seed` | 单独管理 e2e 隔离栈(10248 api / 10249 web) |
+| `uv run python scripts/check.py smoke` | 30 秒快速门禁:pytest + e2e 冒烟子集(--tag smoke) |
+| `uv run python scripts/flake_check.py` | flake 检测:连跑 N 轮找时绿时红的用例(默认 5 轮) |
+| `uv run python scripts/convention_coverage.py` | AGENTS.md 规矩 ↔ 用例覆盖对照(--strict 可做门禁) |
+| `GITWIRE_COV=1 uv run python scripts/check.py backend` | pytest 覆盖率与防倒退线(基线 80%) |
+| `SKIP_PUSH_GATE=1 git push` | 紧急绕过 pre-push 门禁(需在提交信息说明原因) |
 | `uv run python scripts/e2e_dashboard.py` | 回归驾驶舱(http://127.0.0.1:10247):案例表实时进度(标记 确定性/AI·模型,每轮自动纳入新测试)、勾选任意条目单独运行、停止/只跑失败项/全量回归;**关闭会话或 Ctrl-C 自动收摊**(SIGTERM/SIGHUP 均优雅退出并拆除隔离栈) |
 | `uv run python scripts/acceptance.py up / status / down / restart` | 本机验收环境生命周期(10240/10241 + Postgres/Redis/Mailpit) |
 | `uv run python scripts/acceptance_container.py up / status / down` | 10242 一次性全镜像验收栈(测试环境) |
