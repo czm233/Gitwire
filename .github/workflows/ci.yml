@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # 锁定依赖:uv.lock(后端) + package-lock.json(前端)
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --locked
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 25
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+
+      # 与本机完全同一套检查:pytest → 前端单测 → tsc 构建 → 隔离栈浏览器 e2e
+      # (e2e 栈自带 sqlite 后端 + 种子数据 + 构建版前端 preview,不需要 Postgres/Redis/Docker)
+      - name: Run all checks
+        run: uv run python scripts/check.py all
+
+      # 失败时保存 e2e 报告/截图/trace,便于定位(路径见 scripts/e2e_stack.py 的 BASE)
+      - name: Upload e2e reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-reports
+          path: |
+            frontend/.e2e/
+          retention-days: 14
