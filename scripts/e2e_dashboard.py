@@ -30,6 +30,17 @@ FRONTEND = ROOT / 'frontend'
 PORT = 10247
 SELF = f'http://127.0.0.1:{PORT}'
 LIVE_FRAME = ROOT / 'data' / 'e2e-stack' / 'live.jpg'  # 与 e2e 栈同目录,由本脚本管理
+HISTORY = ROOT / 'data' / 'test-history.jsonl'  # 每轮运行摘要,趋势面板数据源
+
+
+def append_history(entry: dict) -> None:
+    """追加一轮运行摘要(全量/子集分别标记,趋势统计只用全量轮)。"""
+    try:
+        HISTORY.parent.mkdir(parents=True, exist_ok=True)
+        with HISTORY.open('a') as file:
+            file.write(json.dumps(entry, ensure_ascii=False) + '\n')
+    except OSError:
+        pass  # 历史写失败不影响本轮运行结果
 
 lock = threading.RLock()
 events_queue: "queue.Queue[dict]" = queue.Queue()
@@ -230,6 +241,7 @@ def watch_live(stop) -> None:
 
 def start_run(mode: str, selected: list[str] | None = None, headed: bool = False, video: bool = False) -> None:
     def worker() -> None:
+        t0 = time.time()  # 本轮起始时间(局部):落盘用,避免读到下一轮重置后的 state
         with lock:
             state['cases'] = scan_cases()  # 每轮重扫:新写的测试文件自动出现在案例表
             for case in state['cases']:
@@ -290,12 +302,29 @@ def start_run(mode: str, selected: list[str] | None = None, headed: bool = False
             for w in watchers:
                 w.join(timeout=2)
         runner_proc[0] = None
+        # 先在锁内对案例做快照:下一轮此刻可能已 rescan 重置共享 state
         with lock:
             if state['status'] in ('running', 'starting'):
                 state['status'] = 'finished' if proc.returncode == 0 else 'stopped' if stop_requested[0] else 'error'
                 state['finishedAt'] = time.time()
-            counts = {s: sum(1 for c in state['cases'] if c['state'] == s) for s in ('passed', 'failed')}
-            log(f"运行结束:通过 {counts['passed']} · 失败 {counts['failed']}(退出码 {proc.returncode})")
+            snapshot = [dict(c) for c in state['cases']]
+            final_status = state['status']
+        counts = {s: sum(1 for c in snapshot if c['state'] == s) for s in ('passed', 'failed')}
+        log(f"运行结束:通过 {counts['passed']} · 失败 {counts['failed']}(退出码 {proc.returncode})")
+        # 历史落盘:本轮摘要(局部时间+快照统计,与共享 state 解耦)
+        append_history({
+            'at': time.strftime('%Y-%m-%dT%H:%M:%S'),
+            'kind': 'subset' if selected else ('last-failed' if mode == 'last-failed' else 'full'),
+            'status': final_status,
+            'passed': counts['passed'], 'failed': counts['failed'],
+            'total': len(selected) if selected else len(snapshot),
+            'duration_s': round(time.time() - t0, 1),
+            'slow_cases': [
+                {'title': c['title'], 's': round(c['durationMs'] / 1000, 1)}
+                for c in snapshot
+                if (c.get('durationMs') or 0) > 3000
+            ],
+        })
         stop_requested[0] = False
 
     threading.Thread(target=worker, daemon=True).start()
@@ -360,6 +389,8 @@ PAGE = '''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
   #live{display:none;margin-top:14px;background:var(--panel);border:1px solid var(--amber);border-radius:8px;padding:10px}
   #live img{width:100%;border-radius:6px;background:#000}
   #speed{width:180px;accent-color:var(--amber)}
+  #history{display:none;margin-top:14px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12px}
+  #history table{margin-top:6px}#history td,#history th{padding:3px 8px}
   .console{margin-top:8px;background:var(--panel);border:1px solid var(--line);border-radius:8px;
     padding:10px 12px;height:190px;overflow:auto;font-size:12px;color:var(--dim);white-space:pre-wrap}
   .console b{color:var(--green);font-weight:400}
@@ -380,10 +411,12 @@ PAGE = '''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <table><thead><tr><th class="dim">选</th><th class="dim">#</th><th>测试案例</th><th>状态</th><th class="dim">耗时</th></tr></thead>
 <tbody id="rows"></tbody></table>
 <button id="b-log">▸ 运行日志</button>
+  <button id="b-history">📈 趋势</button>
 <div id="live"><div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
   <span style="color:var(--amber)">● LIVE</span>
   <strong id="live-title" style="font-size:13px"></strong></div>
   <img id="live-img" alt="测试浏览器实时画面"></div>
+<div id="history"></div>
 <div class="console" id="console" hidden></div>
 </div><script>
 const $ = id => document.getElementById(id);
@@ -522,6 +555,24 @@ $('b-failed').onclick=()=>ctl('last-failed');
 $('b-selected').onclick=()=>ctl('start', {selected:[...selection], headed:$('c-headed').checked, video:$('c-video').checked});
 $('b-start').onclick=()=>ctl('start', {headed:$('c-headed').checked, video:$('c-video').checked});
 $('b-log').onclick=()=>{showLog=!showLog;userToggled=true};
+$('b-history').onclick=async()=>{
+  const box=$('history');
+  if(box.style.display==='block'){box.style.display='none';return;}
+  box.style.display='block';
+  box.textContent='加载中…';
+  try{
+    const h=await (await fetch('/history')).json();
+    const rows=(h.recent||[]).map(e=>`<tr><td class="num">${e.at||''}</td><td>${{full:'全量',subset:'子集','last-failed':'失败项'}[e.kind]||e.kind}</td><td class="st ${e.failed?'failed':'passed'}">${e.failed?('×'+e.failed):'✓'}${e.passed!=null?(' · '+e.passed+'过'):''}</td><td class="num">${e.duration_s??''}s</td></tr>`).join('');
+    const slow=(h.slow_top||[]).map(c=>`<tr><td>${c.title.slice(0,30)}</td><td class="num">${c.avg_s}s</td><td class="num">${c.runs}次</td></tr>`).join('');
+    box.innerHTML=`<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:4px">
+      <span>全量轮 <strong>${h.full_runs??0}</strong></span>
+      <span>成功率 <strong>${h.pass_rate!=null?(h.pass_rate*100).toFixed(0)+'%':'—'}</strong></span>
+      <span>平均耗时 <strong>${h.avg_duration_s??'—'}s</strong></span></div>
+      ${h.slow_top&&h.slow_top.length?`<div style="color:var(--amber);margin-top:6px">慢用例 Top(>3s,均值)</div><table><thead><tr><th>用例</th><th>均时</th><th>出现</th></tr></thead><tbody>${slow}</tbody></table>`:'<p class="meta">暂无慢用例(阈值 3s)</p>'}
+      <div style="color:var(--dim);margin-top:8px">最近轮次</div>
+      <table><thead><tr><th>时间</th><th>类型</th><th>结果</th><th>耗时</th></tr></thead><tbody>${rows||'<tr><td colspan="4" class="dim">还没有历史,跑一轮全量即有</td></tr>'}</tbody></table>`;
+  }catch(e){box.textContent='加载失败:'+e;}
+};
 </script></body></html>'''
 
 
@@ -575,6 +626,29 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(data)
             else:
                 self._send(404, b'no frame')
+        elif self.path.startswith('/history'):
+            entries = []
+            if HISTORY.exists():
+                for line in HISTORY.read_text().splitlines()[-200:]:
+                    try:
+                        entries.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+            full = [e for e in entries if e.get('kind') == 'full'][-20:]
+            durations = [e.get('duration_s', 0) for e in full]
+            slow: dict[str, list[float]] = {}
+            for e in full:
+                for c in e.get('slow_cases') or []:
+                    slow.setdefault(c['title'], []).append(c['s'])
+            self._send(200, json.dumps({
+                'recent': entries[-12:][::-1],
+                'full_runs': len(full),
+                'pass_rate': round(sum(1 for e in full if e.get('failed') == 0) / len(full), 3) if full else None,
+                'avg_duration_s': round(sum(durations) / len(durations), 1) if durations else None,
+                'slow_top': sorted(
+                    ({'title': t, 'avg_s': round(sum(v) / len(v), 1), 'runs': len(v)} for t, v in slow.items()),
+                    key=lambda x: -x['avg_s'])[:5],
+            }, ensure_ascii=False).encode(), 'application/json')
         elif self.path == '/events':
             # 微锁内完成序列化:既不持锁做网络写,也不在锁外迭代会被并发修改的活结构
             with lock:
