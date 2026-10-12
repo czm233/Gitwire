@@ -393,6 +393,8 @@ PAGE = '''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
   #live{display:none;margin-top:14px;background:var(--panel);border:1px solid var(--amber);border-radius:8px;padding:10px}
   #live img{width:100%;border-radius:6px;background:#000}
   #speed{width:180px;accent-color:var(--amber)}
+  #trial{display:none;margin-top:14px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12px}
+  #trial .charter{display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid var(--line)}
   #history{display:none;margin-top:14px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12px}
   #history table{margin-top:6px}#history td,#history th{padding:3px 8px}
   .console{margin-top:8px;background:var(--panel);border:1px solid var(--line);border-radius:8px;
@@ -421,10 +423,17 @@ PAGE = '''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <tbody id="rows"></tbody></table>
 <button id="b-log">▸ 运行日志</button>
   <button id="b-history">📈 趋势</button>
+  <button id="b-trial">🤖 AI 试用</button>
 <div id="live"><div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
   <span style="color:var(--amber)">● LIVE</span>
   <strong id="live-title" style="font-size:13px"></strong></div>
   <img id="live-img" alt="测试浏览器实时画面"></div>
+<div id="trial"><div style="display:flex;gap:8px;align-items:center;margin-bottom:4px">
+  <strong style="font-size:13px">AI 试用官</strong>
+  <span style="color:var(--dim)">AI 以真实用户姿态走查核心旅程,产出体验报告;每卡一次真实模型调用(数分钟)</span>
+  <span style="flex:1"></span><button id="trial-report-btn" class="ghost">📄 最近报告</button></div>
+  <div id="trial-list">加载中…</div>
+  <pre class="detail-pre" id="trial-report" style="display:none;margin-top:8px"></pre></div>
 <div id="history"></div>
 <div class="console" id="console" hidden></div>
 </div><script>
@@ -574,6 +583,28 @@ $('b-failed').onclick=()=>ctl('last-failed');
 $('b-selected').onclick=()=>ctl('start', {selected:[...selection], headed:$('c-headed').checked, video:$('c-video').checked});
 $('b-start').onclick=()=>ctl('start', {headed:$('c-headed').checked, video:$('c-video').checked});
 $('b-log').onclick=()=>{showLog=!showLog;userToggled=true};
+$('b-trial').onclick=async()=>{
+  const box=$('trial');
+  if(box.style.display==='block'){box.style.display='none';return;}
+  box.style.display='block';
+  const charters=await (await fetch('/trial')).json();
+  $('trial-list').innerHTML=charters.map(c=>
+    `<div class="charter"><span class="num" style="min-width:18px">${c.id}</span>
+     <span style="flex:1">${c.title}</span>
+     <span class="tag det">${c.session}</span>
+     <button class="watch" data-charter="${c.id}">▶ 运行</button></div>`).join('');
+  document.querySelectorAll('#trial-list [data-charter]').forEach(b => b.onclick = () => {
+    fetch('/api/control',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({action:'trial',charter:+b.dataset.charter})});
+  });
+};
+$('trial-report-btn').onclick=async()=>{
+  const pre=$('trial-report');
+  pre.style.display='block';
+  pre.textContent='加载中…';
+  pre.textContent=await (await fetch('/trial-report')).text();
+  pre.scrollIntoView({behavior:'smooth',block:'start'});
+};
 $('b-history').onclick=async()=>{
   const box=$('history');
   if(box.style.display==='block'){box.style.display='none';return;}
@@ -645,6 +676,16 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(data)
             else:
                 self._send(404, b'no frame')
+        elif self.path.startswith('/trial-report'):
+            report_path = ROOT / 'data' / 'ai-trial-report.md'
+            self._send(200, (report_path.read_text() if report_path.exists()
+                             else '(还没有试用报告;跑一张使命卡即生成)').encode())
+        elif self.path.startswith('/trial'):
+            sys.path.insert(0, str(ROOT / 'scripts'))
+            from ai_trial import CHARTERS
+            self._send(200, json.dumps(
+                [{'id': c['id'], 'title': c['title'], 'session': c['session'] or '访客'} for c in CHARTERS],
+                ensure_ascii=False).encode(), 'application/json')
         elif self.path.startswith('/history'):
             entries = []
             if HISTORY.exists():
@@ -695,6 +736,20 @@ class Handler(BaseHTTPRequestHandler):
                     selected = payload.get('selected') or None
                     start_run('last-failed' if action == 'last-failed' else 'all', selected,
                               headed=bool(payload.get('headed')), video=bool(payload.get('video')))
+            elif action == 'trial':
+                charter = int(payload.get('charter') or 0)
+
+                def run_trial() -> None:
+                    log(f'AI 试用官:启动使命 {charter}(真实模型调用,数分钟)…')
+                    proc = subprocess.Popen(['uv', 'run', 'python', 'scripts/ai_trial.py', '--only', str(charter)],
+                                             cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                    for line in proc.stdout or []:
+                        log('🤖 ' + line.rstrip())
+                    proc.wait()
+                    log(f'AI 试用官:使命 {charter} 结束(退出码 {proc.returncode}),报告见「最近报告」。')
+
+                if state['status'] not in ('running', 'starting'):
+                    threading.Thread(target=run_trial, daemon=True).start()
             elif action == 'stop':
                 stop_run()
             elif action == 'shutdown':
