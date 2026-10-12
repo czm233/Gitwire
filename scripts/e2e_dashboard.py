@@ -71,8 +71,8 @@ def initial_trials() -> dict:
     result = {}
     report = ROOT / 'data' / 'ai-trial-report.md'
     if report.exists():
-        for number, code in re.findall(r'## 使命 (\d+):.*?退出码 (\d+)', report.read_text()):
-            result[int(number)] = {'status': 'done', 'exit': int(code)}
+        for number, seconds, code in re.findall(r'## 使命 (\d+):.*?· (\d+)s · 退出码 (\d+)', report.read_text()):
+            result[int(number)] = {'status': 'done', 'exit': int(code), 'duration_s': int(seconds)}
     return result
 
 
@@ -251,7 +251,25 @@ def watch_live(stop) -> None:
         stop.wait(0.8)
 
 
-def start_run(mode: str, selected: list[str] | None = None, headed: bool = False, video: bool = False) -> None:
+def launch_charter(charter: int) -> int:
+    """跑一张试用使命卡(状态回写 state['trials'],输出流进控制台)。"""
+    log(f'AI 试用官:启动使命 {charter}(真实模型调用,数分钟)…')
+    with lock:
+        state['trials'][charter] = {'status': 'running', 'exit': None, 'duration_s': None}
+    proc = subprocess.Popen(['uv', 'run', 'python', 'scripts/ai_trial.py', '--only', str(charter)],
+                            cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    for line in proc.stdout or []:
+        log('🤖 ' + line.rstrip())
+    proc.wait()
+    with lock:
+        previous = state['trials'].get(charter, {}).get('duration_s')
+        state['trials'][charter] = {'status': 'done', 'exit': proc.returncode, 'duration_s': previous}
+    log(f'AI 试用官:使命 {charter} 结束(退出码 {proc.returncode}),报告已更新。')
+    return proc.returncode
+
+
+def start_run(mode: str, selected: list[str] | None = None, headed: bool = False, video: bool = False,
+              trial_ids: list[int] | None = None) -> None:
     def worker() -> None:
         t0 = time.time()  # 本轮起始时间(局部):落盘用,避免读到下一轮重置后的 state
         with lock:
@@ -288,9 +306,13 @@ def start_run(mode: str, selected: list[str] | None = None, headed: bool = False
         if video:
             extras += ['--video=on']
             log('录制回放视频:每条用例一个 webm,跑完可在案例行点「观看回放」…')
+        if trial_ids:
+            log(f'本次运行还包括 {len(trial_ids)} 张试用使命卡(顺序执行)…')
         # --trace:每条用例都留步骤记录(官方默认只写失败的),供「步骤」按钮查看
         extras += ['--trace']
         args = ['npm', 'run', 'e2e'] + (['--', *extras] if extras else [])
+        if selected is None and mode == 'all' and not trial_ids:
+            pass  # 全量回归走原有路径
         run_env = {**os.environ, 'E2E_DASHBOARD': f'{SELF}/api/event'}
         if headed:
             run_env['E2E_WORKERS'] = '1'  # 串行:一次一个窗口,直播画面才跟得上
@@ -314,6 +336,9 @@ def start_run(mode: str, selected: list[str] | None = None, headed: bool = False
             for w in watchers:
                 w.join(timeout=2)
         runner_proc[0] = None
+        # 「运行选中」混选时:用例跑完接着顺序跑使命卡(各自独立起收隔离栈)
+        for charter in trial_ids or []:
+            launch_charter(charter)
         # 先在锁内对案例做快照:下一轮此刻可能已 rescan 重置共享 state
         with lock:
             if state['status'] in ('running', 'starting'):
@@ -510,17 +535,18 @@ function tick(){fetch('/events').then(r=>r.json()).then(s=>{
     <td class="num">${c.durationMs!=null?(c.durationMs/1000).toFixed(1)+'s':''}</td></tr>`).join('');
   const trials = s.trials || [];
   const visibleTrials = trials.filter(() => typeFilter === 'all' || typeFilter === 'ai');
+  const offset = visible.length;  // 使命卡编号紧接用例编号(67 起),不用"试用N"特殊名
   if (!smokeOnly && visibleTrials.length) {
     const trialRow = t => {
       const st = t.status==='running' ? '<span class="st running">▶ 运行中</span>'
         : t.status==='done' ? (t.exit===0 ? '<span class="st passed">✓ 已完成</span>' : '<span class="st failed">⚑ 有发现</span>')
         : '<span class="st pending">— 未运行</span>';
-      return `<tr data-trial="${t.id}"><td></td><td class="num">试用${t.id}</td>
-        <td>使命 ${t.id}:${t.title}</td>
+      return `<tr data-trial="${t.id}"><td><input type="checkbox" data-t="trial:${t.id}" ${selection.has('trial:'+t.id)?'checked':''}></td><td class="num">${offset + t.id}</td>
+        <td>使命 ${t.id}:${t.title}<button class="watch trial-run" data-charter="${t.id}" ${t.status==='running'?'disabled':''}>${t.status==='running'?'运行中…':'▶ 运行'}</button>
+        <button class="watch trc trial-view" data-charter="${t.id}">报告</button></td>
         <td class="nw"><span class="tag ai">AI 试用</span></td><td class="nw" style="color:var(--dim)">—</td>
         <td class="nw">${st}</td>
-        <td class="nw"><button class="watch trial-run" data-charter="${t.id}" ${t.status==='running'?'disabled':''}>${t.status==='running'?'运行中…':'▶ 运行'}</button>
-        <button class="watch trc trial-view" data-charter="${t.id}">报告</button></td></tr>`;
+        <td class="nw" style="color:var(--dim)">${t.duration_s!=null?t.duration_s+'s':'—'}</td></tr>`;
     };
     $('rows').innerHTML += visibleTrials.map(trialRow).join('');
   }
@@ -616,7 +642,12 @@ $('f-smoke').onclick = () => { smokeOnly = !smokeOnly; tick(); };
 setInterval(tick,600); tick();
 $('b-start').onclick=()=>ctl('start'); $('b-stop').onclick=()=>ctl('stop');
 $('b-failed').onclick=()=>ctl('last-failed');
-$('b-selected').onclick=()=>ctl('start', {selected:[...selection], headed:$('c-headed').checked, video:$('c-video').checked});
+$('b-selected').onclick=()=>{
+  const titles=[...selection].filter(k=>!k.startsWith('trial:'));
+  const trials=[...selection].filter(k=>k.startsWith('trial:')).map(k=>+k.slice(6));
+  ctl('start', {selected:titles.length?titles:null, trials:trials.length?trials:null,
+    headed:$('c-headed').checked, video:$('c-video').checked});
+};
 $('b-start').onclick=()=>ctl('start', {headed:$('c-headed').checked, video:$('c-video').checked});
 $('b-log').onclick=()=>{showLog=!showLog;userToggled=true};
 $('b-history').onclick=async()=>{
@@ -735,7 +766,7 @@ class Handler(BaseHTTPRequestHandler):
                 sys.path.insert(0, str(ROOT / 'scripts'))
                 from ai_trial import CHARTERS as _CHARTERS
                 trials = [{'id': c['id'], 'title': c['title'], 'session': c['session'] or '访客',
-                           **state['trials'].get(c['id'], {'status': 'idle', 'exit': None})}
+                           **state['trials'].get(c['id'], {'status': 'idle', 'exit': None, 'duration_s': None})}
                           for c in _CHARTERS]
                 snapshot = json.dumps({'status': state['status'], 'total': state['total'], 'headed': state.get('headed'),
                                        'trials': trials,
@@ -761,22 +792,13 @@ class Handler(BaseHTTPRequestHandler):
                 if state['status'] not in ('running', 'starting'):
                     selected = payload.get('selected') or None
                     start_run('last-failed' if action == 'last-failed' else 'all', selected,
-                              headed=bool(payload.get('headed')), video=bool(payload.get('video')))
+                              headed=bool(payload.get('headed')), video=bool(payload.get('video')),
+                              trial_ids=payload.get('trials') or None)
             elif action == 'trial':
                 charter = int(payload.get('charter') or 0)
 
                 def run_trial() -> None:
-                    log(f'AI 试用官:启动使命 {charter}(真实模型调用,数分钟)…')
-                    with lock:
-                        state['trials'][charter] = {'status': 'running', 'exit': None}
-                    proc = subprocess.Popen(['uv', 'run', 'python', 'scripts/ai_trial.py', '--only', str(charter)],
-                                             cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-                    for line in proc.stdout or []:
-                        log('🤖 ' + line.rstrip())
-                    proc.wait()
-                    with lock:
-                        state['trials'][charter] = {'status': 'done', 'exit': proc.returncode}
-                    log(f'AI 试用官:使命 {charter} 结束(退出码 {proc.returncode}),报告已更新。')
+                    launch_charter(charter)
 
                 if state['status'] not in ('running', 'starting'):
                     threading.Thread(target=run_trial, daemon=True).start()
