@@ -61,6 +61,7 @@ def scan_cases() -> list[dict]:
             cases.append({'title': title, 'file': path.name,
                           'kind': 'setup' if match.group(1) else 'test',
                           'ai': bool(re.search(r'\bagent\.', body)),
+                          'smoke': bool(re.search(r"tags:\s*\[[^\]]*['\"]smoke['\"]", body)),
                           'code': body.strip()[:3000],
                           'state': 'pending', 'durationMs': None, 'note': '', 'info': ''})
     return cases
@@ -143,7 +144,7 @@ def apply_event(event: dict) -> None:
             title = dig(event, 'title') or ''
             case = find_case(title)
             if case is None:
-                case = {'title': title, 'file': '', 'kind': 'test', 'ai': False, 'state': 'pending', 'durationMs': None, 'note': '', 'info': ''}
+                case = {'title': title, 'file': '', 'kind': 'test', 'ai': False, 'smoke': False, 'state': 'pending', 'durationMs': None, 'note': '', 'info': ''}
                 state['cases'].append(case)
             case['state'] = 'running'
             case['note'] = ''
@@ -173,7 +174,7 @@ def apply_event(event: dict) -> None:
             title = dig(event, 'title') or ''
             case = find_case(title)
             if case is None:
-                case = {'title': title, 'file': '', 'kind': 'test', 'ai': False, 'state': 'pending', 'durationMs': None, 'note': '', 'info': ''}
+                case = {'title': title, 'file': '', 'kind': 'test', 'ai': False, 'smoke': False, 'state': 'pending', 'durationMs': None, 'note': '', 'info': ''}
                 state['cases'].append(case)
             raw = dig(event, 'status') or 'failed'
             case['state'] = {'passed': 'passed', 'failed': 'failed', 'timed-out': 'failed',
@@ -376,6 +377,9 @@ PAGE = '''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
   .st.running{color:var(--amber);animation:pulse 1s infinite}.st.cancelled,.st.pending,.st.skipped{color:var(--dim)}
   .tag{display:inline-block;margin-left:6px;padding:0 6px;border-radius:99px;font-size:11px;vertical-align:1px;user-select:none}
   .tag.ai{color:var(--amber);border:1px solid var(--amber)} .tag.det{color:var(--dim);border:1px solid var(--line)}
+  .fbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:10px;font-size:12px;color:var(--dim);user-select:none}
+  .fbtn{font-size:12px;padding:2px 10px;border-radius:99px}
+  .fbtn.on{color:var(--amber);border-color:var(--amber)}
   @keyframes pulse{50%{opacity:.4}}
   .note{color:var(--red);font-size:12px;white-space:pre-wrap}
   .info{color:var(--dim);font-size:12px;white-space:pre-wrap}
@@ -408,7 +412,12 @@ PAGE = '''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 </header>
 <div class="bar"><i id="fill"></i></div>
 <div class="meta" id="meta">待命</div>
-<table><thead><tr><th class="dim">选</th><th class="dim">#</th><th>测试案例</th><th>状态</th><th class="dim">耗时</th></tr></thead>
+<div class="fbar">类型
+  <button class="fbtn on" data-tf="all">全部</button><button class="fbtn" data-tf="det">确定性</button><button class="fbtn" data-tf="ai">AI·模型</button><button class="fbtn" data-tf="setup">前置</button>
+  <span style="width:12px"></span>
+  <button class="fbtn" id="f-smoke">仅冒烟</button>
+  <span style="flex:1"></span><span id="f-count"></span></div>
+<table><thead><tr><th class="dim">选</th><th class="dim">#</th><th>测试案例</th><th>类型</th><th class="dim">冒烟</th><th>状态</th><th class="dim">耗时</th></tr></thead>
 <tbody id="rows"></tbody></table>
 <button id="b-log">▸ 运行日志</button>
   <button id="b-history">📈 趋势</button>
@@ -422,6 +431,8 @@ PAGE = '''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 const $ = id => document.getElementById(id);
 const STAT = {pending:'等待',running:'▶ 运行中',passed:'✓ 通过',failed:'× 失败',cancelled:'— 取消',skipped:'⏭ 跳过'};
 let busy = false, showLog = false, userToggled = false, lastStatus = '';
+let typeFilter = 'all', smokeOnly = false;
+const typeMatch = { all: () => true, det: c => !c.ai && c.kind !== 'setup', ai: c => !!c.ai, setup: c => c.kind === 'setup' };
 const selection = new Set();
   // 行内回放:播放器展开在所属用例行的正下方
   const playerHost = document.createElement('tr');
@@ -476,8 +487,14 @@ function tick(){fetch('/events').then(r=>r.json()).then(s=>{
   $('meta').textContent=`共 ${total} 条(确定性 ${total-ai} · AI ${ai}) · 本轮 ✓${p} ×${f}${skipped?` ⏭${skipped}`:''}` + (s.startedAt?` · 开始于 ${new Date(s.startedAt*1000).toLocaleTimeString()}`:'');
   for (const c of cases) lastCases[c.title] = c;
   const fullRender = () => {
-  $('rows').innerHTML=cases.map((c,i)=>`<tr data-title="${c.title.replace(/"/g,'&quot;')}"><td><input type="checkbox" data-t="${c.title.replace(/"/g,'&quot;')}" ${selection.has(c.title)?'checked':''}></td><td class="num">${i+1}</td>
-    <td>${c.title}${c.kind==='setup'?' <span class="tag det">前置</span>':''}${c.ai?'<span class="tag ai">AI·模型</span>':'<span class="tag det">确定性</span>'}${c.note?`<div class="note">${c.note}</div>`:''}${c.info?`<div class="info">${c.info}</div>`:''}${c.video?`<button class="watch" data-video="${encodeURIComponent(c.video)}" data-title="${c.title.replace(/"/g,'&quot;')}">▶ 观看回放</button>`:''}<button class="watch src" data-mode="code" data-title="${c.title.replace(/"/g,'&quot;')}">源码</button>${c.trace?`<button class="watch trc" data-mode="trace" data-title="${c.title.replace(/"/g,'&quot;')}">步骤</button>`:''}${c.log&&c.log.length?`<button class="watch trc" data-mode="log" data-title="${c.title.replace(/"/g,'&quot;')}">日志</button>`:''}</td>
+  const visible = cases.filter(c => typeMatch[typeFilter](c) && (!smokeOnly || c.smoke));
+  $('f-count').textContent = `${visible.length}/${cases.length} 条`;
+  document.querySelectorAll('.fbtn[data-tf]').forEach(b => b.classList.toggle('on', b.dataset.tf === typeFilter));
+  $('f-smoke').classList.toggle('on', smokeOnly);
+  $('rows').innerHTML=visible.map((c,i)=>`<tr data-title="${c.title.replace(/"/g,'&quot;')}"><td><input type="checkbox" data-t="${c.title.replace(/"/g,'&quot;')}" ${selection.has(c.title)?'checked':''}></td><td class="num">${i+1}</td>
+    <td>${c.title}${c.note?`<div class="note">${c.note}</div>`:''}${c.info?`<div class="info">${c.info}</div>`:''}${c.video?`<button class="watch" data-video="${encodeURIComponent(c.video)}" data-title="${c.title.replace(/"/g,'&quot;')}">▶ 观看回放</button>`:''}<button class="watch src" data-mode="code" data-title="${c.title.replace(/"/g,'&quot;')}">源码</button>${c.trace?`<button class="watch trc" data-mode="trace" data-title="${c.title.replace(/"/g,'&quot;')}">步骤</button>`:''}${c.log&&c.log.length?`<button class="watch trc" data-mode="log" data-title="${c.title.replace(/"/g,'&quot;')}">日志</button>`:''}</td>
+    <td class="nw">${c.kind==='setup'?'<span class="tag det">前置</span>':c.ai?'<span class="tag ai">AI·模型</span>':'<span class="tag det">确定性</span>'}</td>
+    <td class="nw" style="color:${c.smoke?'var(--green)':'var(--dim)'}">${c.smoke?'●':'—'}</td>
     <td class="st ${c.state}">${STAT[c.state]||c.state}</td>
     <td class="num">${c.durationMs!=null?(c.durationMs/1000).toFixed(1)+'s':''}</td></tr>`).join('');
   };
@@ -549,6 +566,8 @@ function tick(){fetch('/events').then(r=>r.json()).then(s=>{
   }
   document.title=`${done.length}/${total} ${f?'×'+f:'✓'} · Gitwire 回归驾驶舱`;
 });}
+document.querySelectorAll('.fbtn[data-tf]').forEach(b => b.onclick = () => { typeFilter = b.dataset.tf; tick(); });
+$('f-smoke').onclick = () => { smokeOnly = !smokeOnly; tick(); };
 setInterval(tick,600); tick();
 $('b-start').onclick=()=>ctl('start'); $('b-stop').onclick=()=>ctl('stop');
 $('b-failed').onclick=()=>ctl('last-failed');
