@@ -66,8 +66,19 @@ def scan_cases() -> list[dict]:
                           'state': 'pending', 'durationMs': None, 'note': '', 'info': ''})
     return cases
 
+def initial_trials() -> dict:
+    """从既有试用报告解析各使命卡上次结果(## 使命 N:…· 退出码 X)。"""
+    result = {}
+    report = ROOT / 'data' / 'ai-trial-report.md'
+    if report.exists():
+        for number, code in re.findall(r'## 使命 (\d+):.*?退出码 (\d+)', report.read_text()):
+            result[int(number)] = {'status': 'done', 'exit': int(code)}
+    return result
+
+
 def new_state() -> dict:
     return {'status': 'idle', 'total': None, 'headed': False, 'startedAt': None, 'finishedAt': None,
+            'trials': initial_trials(),
             'cases': scan_cases(), 'log': deque(maxlen=200), 'steps': deque(maxlen=40)}
 
 state = new_state()
@@ -393,8 +404,6 @@ PAGE = '''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
   #live{display:none;margin-top:14px;background:var(--panel);border:1px solid var(--amber);border-radius:8px;padding:10px}
   #live img{width:100%;border-radius:6px;background:#000}
   #speed{width:180px;accent-color:var(--amber)}
-  #trial{display:none;margin-top:14px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12px}
-  #trial .charter{display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid var(--line)}
   #history{display:none;margin-top:14px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12px}
   #history table{margin-top:6px}#history td,#history th{padding:3px 8px}
   .console{margin-top:8px;background:var(--panel);border:1px solid var(--line);border-radius:8px;
@@ -423,17 +432,10 @@ PAGE = '''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <tbody id="rows"></tbody></table>
 <button id="b-log">▸ 运行日志</button>
   <button id="b-history">📈 趋势</button>
-  <button id="b-trial">🤖 AI 试用</button>
 <div id="live"><div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
   <span style="color:var(--amber)">● LIVE</span>
   <strong id="live-title" style="font-size:13px"></strong></div>
   <img id="live-img" alt="测试浏览器实时画面"></div>
-<div id="trial"><div style="display:flex;gap:8px;align-items:center;margin-bottom:4px">
-  <strong style="font-size:13px">AI 试用官</strong>
-  <span style="color:var(--dim)">AI 以真实用户姿态走查核心旅程,产出体验报告;每卡一次真实模型调用(数分钟)</span>
-  <span style="flex:1"></span><button id="trial-report-btn" class="ghost">📄 最近报告</button></div>
-  <div id="trial-list">加载中…</div>
-  <pre class="detail-pre" id="trial-report" style="display:none;margin-top:8px"></pre></div>
 <div id="history"></div>
 <div class="console" id="console" hidden></div>
 </div><script>
@@ -441,7 +443,7 @@ const $ = id => document.getElementById(id);
 const STAT = {pending:'等待',running:'▶ 运行中',passed:'✓ 通过',failed:'× 失败',cancelled:'— 取消',skipped:'⏭ 跳过'};
 let busy = false, showLog = false, userToggled = false, lastStatus = '';
 let typeFilter = 'all', smokeOnly = false;
-const typeMatch = { all: () => true, det: c => !c.ai && c.kind !== 'setup', ai: c => !!c.ai, setup: c => c.kind === 'setup' };
+const typeMatch = { all: () => true, det: c => c.kind === 'test' && !c.ai, ai: c => !!c.ai, setup: c => c.kind === 'setup' };
 const selection = new Set();
   // 行内回放:播放器展开在所属用例行的正下方
   const playerHost = document.createElement('tr');
@@ -459,7 +461,7 @@ const selection = new Set();
     detailState.title = title; detailState.mode = mode;
     row.after(detailHost);
     document.getElementById('detail-title').textContent = title;
-    document.getElementById('detail-mode').textContent = { code: '源码·判定怎么写', trace: '步骤·这轮怎么跑的', log: '日志·本条实时输出' }[mode] || mode;
+    document.getElementById('detail-mode').textContent = { code: '源码·判定怎么写', trace: '步骤·这轮怎么跑的', log: '日志·本条实时输出', trial: '报告·AI 试用官' }[mode] || mode;
     const pre = document.getElementById('detail-pre');
     pre.textContent = '加载中…';
     Promise.resolve(fill()).then(t => { pre.textContent = t || '(无内容)'; }).catch(e => { pre.textContent = '加载失败:' + e; });
@@ -506,6 +508,23 @@ function tick(){fetch('/events').then(r=>r.json()).then(s=>{
     <td class="nw" style="color:${c.smoke?'var(--green)':'var(--dim)'}">${c.smoke?'●':'—'}</td>
     <td class="st ${c.state}">${STAT[c.state]||c.state}</td>
     <td class="num">${c.durationMs!=null?(c.durationMs/1000).toFixed(1)+'s':''}</td></tr>`).join('');
+  const trials = s.trials || [];
+  const visibleTrials = trials.filter(() => typeFilter === 'all' || typeFilter === 'ai');
+  if (!smokeOnly && visibleTrials.length) {
+    const trialRow = t => {
+      const st = t.status==='running' ? '<span class="st running">▶ 运行中</span>'
+        : t.status==='done' ? (t.exit===0 ? '<span class="st passed">✓ 已完成</span>' : '<span class="st failed">⚑ 有发现</span>')
+        : '<span class="st pending">— 未运行</span>';
+      return `<tr data-trial="${t.id}"><td></td><td class="num">试用${t.id}</td>
+        <td>使命 ${t.id}:${t.title}</td>
+        <td class="nw"><span class="tag ai">AI 试用</span></td><td class="nw" style="color:var(--dim)">—</td>
+        <td class="nw">${st}</td>
+        <td class="nw"><button class="watch trial-run" data-charter="${t.id}" ${t.status==='running'?'disabled':''}>${t.status==='running'?'运行中…':'▶ 运行'}</button>
+        <button class="watch trc trial-view" data-charter="${t.id}">报告</button></td></tr>`;
+    };
+    $('rows').innerHTML += visibleTrials.map(trialRow).join('');
+  }
+  $('f-count').textContent = `${visible.length+(smokeOnly?0:visibleTrials.length)}/${cases.length+(smokeOnly?0:trials.length)} 条`;
   };
   if (playerState.title || detailState.title) {
     // 展开面板期间只更新状态单元格,避免整表重绘把面板冲掉
@@ -519,6 +538,7 @@ function tick(){fetch('/events').then(r=>r.json()).then(s=>{
     fullRender();
   }
   document.querySelectorAll('#rows .watch').forEach(b => b.onclick = () => {
+    if (b.classList.contains('trial-run') || b.classList.contains('trial-view')) return;  // 试用卡按钮有专属处理器
     if (b.dataset.mode) {  // 源码 / 步骤 详情
       const case_ = lastCases[b.dataset.title] || {};
       if (detailState.title === b.dataset.title && detailState.mode === b.dataset.mode) { closeDetail(); return; }
@@ -575,6 +595,22 @@ function tick(){fetch('/events').then(r=>r.json()).then(s=>{
   }
   document.title=`${done.length}/${total} ${f?'×'+f:'✓'} · Gitwire 回归驾驶舱`;
 });}
+// 试用卡按钮用事件委托:表格每 600ms 重渲染,逐节点绑定会命中被换掉的旧节点
+$('rows').addEventListener('click', event => {
+  const run = event.target.closest('.trial-run');
+  if (run) {
+    run.disabled = true; run.textContent = '运行中…';
+    showLog = true;  // 走查要数分钟:自动展开控制台,实时看 🤖 输出流
+    fetch('/api/control',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({action:'trial',charter:+run.dataset.charter})});
+    return;
+  }
+  const view = event.target.closest('.trial-view');
+  if (view) {
+    openDetail(view.closest('tr'), `使命 ${view.dataset.charter} · 试用报告`, 'trial', async () =>
+      (await (await fetch('/trial-report?charter=' + view.dataset.charter)).text()));
+  }
+});
 document.querySelectorAll('.fbtn[data-tf]').forEach(b => b.onclick = () => { typeFilter = b.dataset.tf; tick(); });
 $('f-smoke').onclick = () => { smokeOnly = !smokeOnly; tick(); };
 setInterval(tick,600); tick();
@@ -583,28 +619,6 @@ $('b-failed').onclick=()=>ctl('last-failed');
 $('b-selected').onclick=()=>ctl('start', {selected:[...selection], headed:$('c-headed').checked, video:$('c-video').checked});
 $('b-start').onclick=()=>ctl('start', {headed:$('c-headed').checked, video:$('c-video').checked});
 $('b-log').onclick=()=>{showLog=!showLog;userToggled=true};
-$('b-trial').onclick=async()=>{
-  const box=$('trial');
-  if(box.style.display==='block'){box.style.display='none';return;}
-  box.style.display='block';
-  const charters=await (await fetch('/trial')).json();
-  $('trial-list').innerHTML=charters.map(c=>
-    `<div class="charter"><span class="num" style="min-width:18px">${c.id}</span>
-     <span style="flex:1">${c.title}</span>
-     <span class="tag det">${c.session}</span>
-     <button class="watch" data-charter="${c.id}">▶ 运行</button></div>`).join('');
-  document.querySelectorAll('#trial-list [data-charter]').forEach(b => b.onclick = () => {
-    fetch('/api/control',{method:'POST',headers:{'content-type':'application/json'},
-      body:JSON.stringify({action:'trial',charter:+b.dataset.charter})});
-  });
-};
-$('trial-report-btn').onclick=async()=>{
-  const pre=$('trial-report');
-  pre.style.display='block';
-  pre.textContent='加载中…';
-  pre.textContent=await (await fetch('/trial-report')).text();
-  pre.scrollIntoView({behavior:'smooth',block:'start'});
-};
 $('b-history').onclick=async()=>{
   const box=$('history');
   if(box.style.display==='block'){box.style.display='none';return;}
@@ -677,9 +691,15 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self._send(404, b'no frame')
         elif self.path.startswith('/trial-report'):
+            from urllib.parse import urlparse, parse_qs, unquote
             report_path = ROOT / 'data' / 'ai-trial-report.md'
-            self._send(200, (report_path.read_text() if report_path.exists()
-                             else '(还没有试用报告;跑一张使命卡即生成)').encode())
+            text = report_path.read_text() if report_path.exists() else '(还没有试用报告;跑一张使命卡即生成)'
+            number = (parse_qs(urlparse(self.path).query).get('charter') or [''])[0]
+            if number:
+                sections = re.split(r'(?=^## 使命 )', text, flags=re.M)
+                section = next((x for x in sections if x.startswith(f'## 使命 {number}:')), '')
+                text = section or f'(使命 {number} 还没有跑过;点行内「▶ 运行」生成)'
+            self._send(200, text.encode())
         elif self.path.startswith('/trial'):
             sys.path.insert(0, str(ROOT / 'scripts'))
             from ai_trial import CHARTERS
@@ -712,7 +732,13 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == '/events':
             # 微锁内完成序列化:既不持锁做网络写,也不在锁外迭代会被并发修改的活结构
             with lock:
+                sys.path.insert(0, str(ROOT / 'scripts'))
+                from ai_trial import CHARTERS as _CHARTERS
+                trials = [{'id': c['id'], 'title': c['title'], 'session': c['session'] or '访客',
+                           **state['trials'].get(c['id'], {'status': 'idle', 'exit': None})}
+                          for c in _CHARTERS]
                 snapshot = json.dumps({'status': state['status'], 'total': state['total'], 'headed': state.get('headed'),
+                                       'trials': trials,
                                        'startedAt': state['startedAt'], 'cases': state['cases'],
                                        'log': list(state['log'])[-80:]}).encode()
             self._send(200, snapshot, 'application/json')
@@ -741,12 +767,16 @@ class Handler(BaseHTTPRequestHandler):
 
                 def run_trial() -> None:
                     log(f'AI 试用官:启动使命 {charter}(真实模型调用,数分钟)…')
+                    with lock:
+                        state['trials'][charter] = {'status': 'running', 'exit': None}
                     proc = subprocess.Popen(['uv', 'run', 'python', 'scripts/ai_trial.py', '--only', str(charter)],
                                              cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
                     for line in proc.stdout or []:
                         log('🤖 ' + line.rstrip())
                     proc.wait()
-                    log(f'AI 试用官:使命 {charter} 结束(退出码 {proc.returncode}),报告见「最近报告」。')
+                    with lock:
+                        state['trials'][charter] = {'status': 'done', 'exit': proc.returncode}
+                    log(f'AI 试用官:使命 {charter} 结束(退出码 {proc.returncode}),报告已更新。')
 
                 if state['status'] not in ('running', 'starting'):
                     threading.Thread(target=run_trial, daemon=True).start()

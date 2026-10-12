@@ -134,7 +134,14 @@ def main() -> None:
         subprocess.run([sys.executable, str(ROOT / 'scripts' / 'e2e_stack.py'), 'down'],
                        cwd=ROOT, capture_output=True)
 
-    # 汇总报告:发现清单置顶供人审,每卡原始输出留档
+    # 汇总报告:发现清单置顶供人审,每卡原始输出留档。
+    # 单卡运行时与既有报告合并(只替换本次跑过的卡),历史卡的结果不丢。
+    previous = {}
+    if REPORT.exists():
+        for chunk in re.split(r'(?m)(?=^## 使命 )', REPORT.read_text(encoding='utf-8')):
+            match = re.match(r'## 使命 (\d+):', chunk)
+            if match:
+                previous[int(match.group(1))] = chunk.rstrip() + '\n'
     lines = ['# AI 试用官报告 · ' + time.strftime('%Y-%m-%d %H:%M'), '',
              '> 走查在隔离栈(种子数据)进行;⚑ 为 AI 的发现,issue 级已导致该卡非零退出。',
              '> 结论仅供参考,以人审为准;确认的问题应转为回归断言。', '']
@@ -150,7 +157,25 @@ def main() -> None:
             lines += ['', '**试用官评语:**', '', section['assessment']]
         lines += ['', '<details><summary>原始走查输出(尾部)</summary>', '',
                   '```', section['raw'], '```', '', '</details>', '']
-    REPORT.write_text('\n'.join(lines), encoding='utf-8')
+    def section_text(section) -> str:
+        return '\n'.join(lines_for(section))
+
+    def lines_for(section) -> list[str]:
+        return [
+            f"## 使命 {section['id']}:{section['title']}"
+            f"({'登录' if section['session'] else '访客'} · {section['duration']}s · 退出码 {section['exit']})",
+            '',
+            *(f'- {finding}' for finding in section['findings'] or ['走查完成,无 ⚑ 级发现']),
+            *(['', '**试用官评语:**', '', section['assessment']] if section['assessment'] else []),
+            '', '<details><summary>原始走查输出(尾部)</summary>', '',
+            '```', section['raw'], '```', '', '</details>', '',
+        ]
+
+    ordered_ids = [c['id'] for c in CHARTERS]
+    merged = {sid: '\n'.join(lines_for(sec)) for sid, sec in zip([x['id'] for x in sections], sections)}
+    merged.update({pid: previous[pid] for pid in previous if pid not in merged})
+    body = '\n'.join(merged[sid] for sid in ordered_ids if sid in merged)
+    REPORT.write_text('\n'.join(lines) + body, encoding='utf-8')
     print(f'\n报告:{REPORT}')
     sys.exit(1 if any(s['exit'] != 0 for s in sections) else 0)
 
