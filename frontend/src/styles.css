@@ -732,6 +732,7 @@ table.host-runs-table .host-run-kind { width: 14%; min-width: 120px; }
 .host-issue-translation { margin: 2px 0 0; color: var(--ink-dim); font-size: 11.5px; line-height: 1.4; }
 .host-table-wrap td:first-child { min-width: 160px; }
 .host-table-wrap td:first-child:has(input[type="checkbox"]) { min-width: 32px; width: 32px; }
+.host-table-wrap input[type="checkbox"] { accent-color: var(--cyan); }
 .host-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .host-actions .btn { white-space: nowrap; }
 .host-empty { padding: 36px 12px; text-align: center; }
