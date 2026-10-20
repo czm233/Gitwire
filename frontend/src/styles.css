@@ -321,6 +321,8 @@ table.tbl td {
 table.tbl tr:last-child td { border-bottom: none; }
 table.tbl tbody tr { transition: background 0.1s, box-shadow 0.1s; }
 table.tbl tbody tr:hover { background: var(--panel2); box-shadow: inset 2px 0 0 var(--cyan); }
+/* 警报未读行：青色左指示条（hover 指示条的静态复用） */
+table.tbl tbody tr.tr-unread { box-shadow: inset 2px 0 0 var(--cyan); }
 /* 数字 / 时间列右对齐（页面按列加 num 类） */
 table.tbl th.num, table.tbl td.num { text-align: right; }
 /* 占位行：只占高度不显示内容——不足一页时把表格撑到整页高度，分页条位置不漂移 */
@@ -719,6 +721,7 @@ table.tbl tbody tr.tbl-filler:hover { background: transparent; box-shadow: none;
 .host-stat.v-green strong { color: var(--green); }
 .host-stat.v-amber strong { color: var(--amber); }
 .host-stat.v-purple strong { color: var(--purple); }
+.host-stat.v-red strong { color: var(--red); }
 .host-stat.active { border-color: rgba(74, 222, 128, 0.65); background: linear-gradient(180deg, rgba(74, 222, 128, 0.09), var(--panel) 65%); }
 .host-stat.active::after { content: "ACTIVE"; position: absolute; top: 10px; right: 12px; font-size: 8.5px; letter-spacing: 0.18em; color: var(--green); font-weight: 600; font-family: var(--mono); }
 
