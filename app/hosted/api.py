@@ -39,6 +39,8 @@ def sub_view(sub, repo):
     return {'id': sub.id, 'repo_id': repo.id, 'repo': repo.full_name, 'description': repo.description,
             'created_at': sub.created_at, 'paused': sub.paused, 'recipes': sub.recipes,
             'watched_issues': sub.watched_issues, 'difficulty': sub.difficulty, 'keywords': sub.keywords, 'opportunity': sub.opportunity,
+            # V04 仓库信号面板只读字段（PM 放行的接口微调，不动业务逻辑与数据层）
+            'stars': repo.stars, 'pushed_at': repo.pushed_at, 'external_merge_at': repo.external_merge_at,
             'checked_at': repo.checked_at, 'public': repo.public, 'unavailable_reason': repo.unavailable_reason}
 
 
