@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { LogOut, Settings as SettingsIcon, UserRound, CheckCircle2, CircleAlert } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
-import { QueryClient, QueryClientProvider, useMutation } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useMutation, useQuery } from '@tanstack/react-query';
 import { BrowserRouter, Link, NavLink, Navigate, Outlet, Route, Routes, useSearchParams } from 'react-router-dom';
 import { AuthProvider, request, useAuth } from './core';
+import OpsStatusBar from '../components/OpsStatusBar';
 import Issues from './Issues';
 import Tasks from './Tasks';
 import Archives from './Archives';
@@ -75,11 +76,20 @@ function AuthFeedback() {
 }
 
 function Shell() {
+  const auth = useAuth();
   const nav = [['/issues', 'Issue 雷达'], ['/repos', '监控清单'], ['/candidates', '候选仓库'], ['/archives', '项目档案'], ['/runs', '运行历史'], ['/daily', '每日晨报'], ['/alerts', '警报'], ['/settings', '设置']];
+  const signals = useQuery({ queryKey: ['issue-signals', auth.user?.id], queryFn: () => request('/issues?page=1&page_size=1'), enabled: !!auth.user, refetchInterval: 60000, select: (data: any) => data?.stats?.all as number | undefined });
   return <div className="shell host-shell">
     <header className="host-topbar" aria-label="应用栏">
-      <div className="host-brand"><div className="brand">GITWIRE<span className="cursor" /></div></div>
-      <div className="host-topbar-main"><div className="brand-sub">OSS INTEL DESK</div><AccountIcon /></div>
+      <div className="host-brand"><div className="host-logo" aria-hidden="true">G</div><span className="host-brand-name">GITWIRE</span></div>
+      <div className="host-topbar-main">
+        <span className="host-brandtag">OSS INTEL DESK</span>
+        <div className="host-topbar-status">
+          <span className="pill"><span className="pdot" aria-hidden="true" />雷达在线</span>
+          {typeof signals.data === 'number' && <span className="pill">信号 <b className="mono">{signals.data}</b></span>}
+        </div>
+        <AccountIcon />
+      </div>
     </header>
     <aside className="side">
       <nav className="host-nav" aria-label="主导航">{nav.map(([to, name], i) => <NavLink key={to} to={to} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`} draggable={false}><span className="idx">{String(i + 1).padStart(2, '0')}</span>{name}</NavLink>)}</nav>
@@ -87,8 +97,9 @@ function Shell() {
     </aside>
     <div className="host-workspace">
       <AuthFeedback />
-      <main className="main"><Outlet /><div className="footer-note">GITWIRE // 开源情报站</div></main>
+      <main className="main"><Outlet /><div className="footer-note">GITWIRE · 开源情报站</div></main>
     </div>
+    <OpsStatusBar />
   </div>;
 }
 export default function HostedApp() {

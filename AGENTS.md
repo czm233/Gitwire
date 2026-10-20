@@ -27,10 +27,10 @@
 - **Issue 标题下方只显示忠实的中文标题翻译**（用户 2026-10-05 确立）：不得用 AI 问题摘要替代翻译；摘要、证据和解决方向放详情弹窗。翻译单独缓存，原文变化后旧翻译失效；未翻译时仅显示原文。
 - **Issue 列不放机会筛选原因标签**（用户 2026-10-05 确立）：仓库活跃度、外部 PR 合并等筛选依据统一放详情的“机会判断依据”，不堆在标题或翻译下面。
 
-- Tailwind v4 已接入但**关闭了 preflight**（全局样式重置），视觉由 `frontend/src/styles.css` 的手写设计系统（终端风：深海军蓝/磷光绿/取景框刻度）全权负责；改样式优先改 styles.css 或组件 className，不得引入会重置全局样式的配置。
+- Tailwind v4 已接入但**关闭了 preflight**（全局样式重置），视觉由 `frontend/src/styles.css` 的手写设计系统（V04 航情台 Ops Deck 风，用户 2026-10-20 选定：深板岩 #14181f 底/青 #38bdf8 主色/圆角面板/KPI 瓦片/高密度表格/状态点体系/底部 OpsStatusBar；中文走系统栈，拉丁与数字用 IBM Plex Sans/Mono）全权负责；改样式优先改 styles.css 或组件 className，不得引入会重置全局样式的配置。
 - 无 preflight 的已知代价（都已补偿，勿删）：shadcn 组件按"preflight 会重置控件样式"设计——`button { color: inherit }` 必须留在 `@layer base`（层序 theme < base < utilities，见 styles.css 顶部），否则浏览器默认黑字在深色主题不可读；控件文字一律显式给亮色（`text-foreground`），占位态（`data-[placeholder]`）也要亮色。
 - Radix/Shadcn Select 受控陷阱（2026-09-27 修复过一次）：`value` 传 `undefined` 会退化成非受控模式，显示卡在上一次选择（"选回全部后框里还留着旧仓库"）。GSelect 已用空值哨兵 `EMPTY` 全链路受控，业务侧继续用 `""` 表示"全部"，不要改动这个映射。
-- shadcn 组件在 `frontend/src/components/ui/`，主题变量已映射到终端风配色（styles.css 顶部的 `--background/--popover/...` 块）；新组件先 `npx shadcn@latest add <name>`，再用主题变量调外观。
+- shadcn 组件在 `frontend/src/components/ui/`，主题变量已映射到 V04 航情台配色（styles.css 顶部的 `--background/--popover/...` 块）；新组件先 `npx shadcn@latest add <name>`，再用主题变量调外观。
 - **自定义类名不得与 Tailwind 工具类撞名**（教训：`table.grid` 被 `.grid` 工具类命中导致表格错位，已改名 `tbl`）。新起类名前先确认不是 Tailwind 工具类。
 - **固定界面元素禁选禁拖**（用户 2026-10-01 指出侧边栏文字可被选中、链接可拖动，操作不顺）：侧边栏、工具栏、分页条这类"应用骨架"区域统一 `user-select: none`，链接元素加 `-webkit-user-drag: none`（styles.css 的 `.side` 已是范例）；内容区（表格文字、摘要、代码）保持可选中，方便复制。
 - 修改任何影响尺寸的样式后，必须检查同页面相邻元素和固定宽度容器是否被挤坏（换行/溢出/错位），并排元素要验证仍在同一行。
