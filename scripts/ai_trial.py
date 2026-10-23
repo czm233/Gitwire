@@ -76,7 +76,7 @@ CHARTERS = [
 
 def run_charter(charter: dict, max_steps: int) -> subprocess.CompletedProcess:
     args = ['npx', 'e2e', 'explore', charter['goal'], '--max-steps', str(max_steps),
-            '--timeout', '300000']
+            '--timeout', '300000', '--video']
     if charter['session']:
         args += ['--session', charter['session']]
     print(f"▶ 使命 {charter['id']}:{charter['title']}", flush=True)

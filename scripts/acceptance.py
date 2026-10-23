@@ -23,7 +23,7 @@ def run(*args, check=True, capture=False):
 
 def registered():
     import yaml
-    registry = yaml.safe_load(Path('/Users/czm/.config/local-deploy/ports.yaml').read_text())
+    registry = yaml.safe_load((Path.home() / '.config/local-deploy/ports.yaml').read_text())
     block = registry['projects']['gitwire']['assigned_block']
     if str(block) != '10240-10249':
         raise SystemExit('Gitwire registered port block has changed; update acceptance settings first')
